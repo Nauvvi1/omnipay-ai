@@ -1,0 +1,14 @@
+name: payment-intent-parser
+version: 1
+summary: Turn a natural-language checkout command into structured payment parameters.
+input:
+  command: string
+  invoice: object
+output:
+  intent: pay_invoice
+  sourceToken: string
+  targetToken: string
+  targetAmount: string
+  confidence: number
+  paymentSummary: string
+  riskExplanation: string

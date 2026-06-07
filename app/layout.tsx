@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     "AI-powered Omniston checkout that lets users pay TON invoices with supported tokens.",
   openGraph: {
     title: "OmniPay AI",
-    description: "Pay TON invoices with any supported token using Mira AI + STON.fi Omniston.",
+    description: "Omniston-powered invoice checkout for TON payments.",
     images: ["/og.svg"]
   }
 };

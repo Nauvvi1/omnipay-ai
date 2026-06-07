@@ -1,37 +1,33 @@
-# Submission draft
-
-## Project name
-OmniPay AI
-
-## One-line pitch
-Pay TON invoices with any supported token: Mira understands the payment intent, STON.fi Omniston finds the route, and TON Connect signs the transaction.
+# Submission — OmniPay AI
 
 ## Track
-STON.fi track
 
-## Clear use case
-A merchant wants to receive USDT. The payer has TON. OmniPay AI turns the invoice into a checkout where the payer can cover the requested USDT amount from TON through Omniston routing.
+STON.fi track — uses Omniston crosschain SDK v1beta8.
 
-## What is integrated
-- STON.fi Omniston SDK v1beta8 flow: RFQ, quote/route, buildTransfer
-- TON Connect: wallet connection and transaction request
-- Mira-compatible AI intent parser: natural language → structured payment intent
-- STON.fi API: live supported asset list
+## One-line pitch
 
-## Demo steps
-1. Create invoice for 25 USDT.
-2. Open the generated checkout link.
-3. Connect TON wallet.
-4. Type `Pay this invoice with TON`.
-5. Mira parser extracts the payment intent.
-6. Omniston returns the live route and quote.
-7. Click Review & Pay.
-8. Wallet opens for transaction confirmation.
+OmniPay AI is an Omniston-powered invoice checkout that lets a merchant request USDT while the payer covers it from TON through live routing and TON Connect.
 
-## Why this is not just a swap UI
-The user is not swapping for trading. The swap is hidden inside an invoice payment workflow. STON.fi becomes payment infrastructure for everyday TON checkout.
+## What judges can test
 
-## Limitations
-- The MVP uses URL-encoded invoices for fast demo deployment.
-- `/pay/demo` routes output back to the connected wallet for safety.
-- Production settlement verification with TonAPI/Toncenter is the next step.
+1. Open the live site.
+2. Create a USDT invoice with a TON recipient address.
+3. Open the generated checkout link.
+4. Connect Tonkeeper through TON Connect.
+5. Parse the command: `Pay this invoice with TON`.
+6. See the real Omniston quote and route.
+7. Run safe simulation, or switch to real mainnet preview to open Tonkeeper.
+8. Open the merchant dashboard and see invoice/payment history.
+
+## STON.fi integration
+
+- STON.fi asset list
+- Omniston RFQ quote
+- route display
+- quote ID display
+- real `tonBuildSwap` transaction preparation
+- TON Connect transaction request
+
+## Safety
+
+Safe simulation mode does not send a transaction. Real mainnet preview opens a real Tonkeeper transaction; confirming spends TON.

@@ -1,5 +1,8 @@
 import { Buffer } from "buffer";
-export type InvoiceStatus = "unpaid" | "ready" | "submitted" | "paid" | "failed";
+
+export type InvoiceStatus = "unpaid" | "ready" | "simulated" | "submitted" | "paid" | "failed";
+export type PaymentMode = "simulation" | "real";
+export type PaymentStatus = "simulated" | "submitted" | "cancelled" | "failed" | "paid";
 
 export type Invoice = {
   id: string;
@@ -12,6 +15,23 @@ export type Invoice = {
   txHash?: string;
 };
 
+export type PaymentRecord = {
+  id: string;
+  invoiceId: string;
+  mode: PaymentMode;
+  status: PaymentStatus;
+  payerAddress?: string;
+  recipientAddress?: string;
+  sourceToken: string;
+  targetToken: string;
+  inputAmount: string;
+  outputAmount: string;
+  quoteId?: string;
+  boc?: string;
+  simulationId?: string;
+  createdAt: string;
+};
+
 export const DEMO_INVOICE: Invoice = {
   id: "demo",
   amount: "0.01",
@@ -22,9 +42,16 @@ export const DEMO_INVOICE: Invoice = {
   status: "unpaid"
 };
 
+export const TON_ADDRESS_ERROR = "Enter a valid user-friendly TON address starting with EQ or UQ.";
+
 export function generateInvoiceId() {
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `INV-${Date.now().toString(36).toUpperCase()}-${rand}`;
+}
+
+export function generatePaymentId() {
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `PAY-${Date.now().toString(36).toUpperCase()}-${rand}`;
 }
 
 export function encodeInvoice(invoice: Invoice) {

@@ -2,7 +2,7 @@
   "name": "omnipay-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "AI-powered Omniston checkout for TON invoices.",
+  "description": "Omniston-powered invoice checkout for TON.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

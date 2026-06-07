@@ -4,17 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { TonConnectButton, useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { StonApiClient, AssetTag, type AssetInfoV2 } from "@ston-fi/api";
 import {
-  SettlementMethod,
   useOmniston,
   useRfq,
   type AssetId,
   type ChainAddress,
   type Quote
 } from "@ston-fi/omniston-sdk-react";
-import { DEMO_INVOICE, decodeInvoice, displayAddress, Invoice, isValidTonAddress } from "@/lib/invoices";
+import { DEMO_INVOICE, decodeInvoice, displayAddress, generatePaymentId, Invoice, isValidTonAddress, PaymentRecord } from "@/lib/invoices";
 import { fromBaseUnits, toBaseUnits } from "@/lib/amounts";
 import { assetSymbol, findAssetBySymbol, sortPreferredAssets } from "@/lib/tokens";
-import type { PaymentIntent } from "@/lib/mira";
+import type { PaymentIntent } from "@/lib/intent";
+import { getLocalInvoices, saveLocalInvoice, saveLocalPayment, updateLocalInvoiceStatus } from "@/lib/storage";
 
 
 type QuoteUpdatedEvent = {
@@ -58,7 +58,30 @@ function tonviewerAddress(address?: string) {
 }
 
 export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedInvoice?: string }) {
-  const invoice = useMemo<Invoice>(() => decodeInvoice(encodedInvoice) || { ...DEMO_INVOICE, id }, [encodedInvoice, id]);
+  const initialInvoice = useMemo<Invoice>(() => decodeInvoice(encodedInvoice) || { ...DEMO_INVOICE, id }, [encodedInvoice, id]);
+  const [invoice, setInvoice] = useState<Invoice>(initialInvoice);
+
+  useEffect(() => {
+    setInvoice(initialInvoice);
+  }, [initialInvoice]);
+
+  useEffect(() => {
+    if (encodedInvoice || id === "demo") return;
+    let alive = true;
+    async function loadStoredInvoice() {
+      const localInvoice = getLocalInvoices().find((item) => item.id === id);
+      if (localInvoice && alive) setInvoice(localInvoice);
+      try {
+        const response = await fetch(`/api/invoices/${encodeURIComponent(id)}`);
+        const json = await response.json();
+        if (alive && json.invoice) setInvoice(json.invoice);
+      } catch {
+        // Browser-local fallback is enough for the hackathon demo.
+      }
+    }
+    loadStoredInvoice();
+    return () => { alive = false; };
+  }, [encodedInvoice, id]);
 
   const walletAddress = useTonAddress();
   const [tonConnect] = useTonConnectUI();
@@ -74,7 +97,7 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
   const [command, setCommand] = useState("Pay this invoice with TON");
   const [intent, setIntent] = useState<PaymentIntent | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiProvider, setAiProvider] = useState("local-fallback");
+  const [aiProvider, setAiProvider] = useState("local-intent-parser");
 
   const [txState, setTxState] = useState<"idle" | "building" | "wallet" | "submitted" | "failed" | "cancelled">("idle");
   const [txBoc, setTxBoc] = useState<string>("");
@@ -153,23 +176,45 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
   const recipientLink = tonviewerAddress(destinationAddress);
   const transactionDisabled = !walletAddress || !quoteUpdated || txState === "building" || txState === "wallet";
 
-  async function parseWithMira() {
+  async function parsePaymentIntent() {
     setAiLoading(true);
     setTxError("");
     try {
-      const response = await fetch("/api/mira", {
+      const response = await fetch("/api/intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command, invoice, supportedTokens: assets.slice(0, 20).map((asset) => assetSymbol(asset)) })
       });
       const json = await response.json();
       setIntent(json.intent);
-      setAiProvider(json.provider || "local-fallback");
+      setAiProvider(json.provider || "local-intent-parser");
       if (json.intent?.sourceToken) setSourceSymbol(json.intent.sourceToken);
     } catch (error) {
       setTxError(error instanceof Error ? error.message : String(error));
     } finally {
       setAiLoading(false);
+    }
+  }
+
+  async function persistPayment(payment: PaymentRecord, invoiceStatus: Invoice["status"]) {
+    saveLocalInvoice({ ...invoice, status: invoiceStatus, txHash: payment.boc || payment.simulationId });
+    saveLocalPayment(payment);
+    updateLocalInvoiceStatus(invoice.id, invoiceStatus, payment.boc || payment.simulationId);
+    setInvoice((current) => ({ ...current, status: invoiceStatus, txHash: payment.boc || payment.simulationId }));
+
+    try {
+      await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payment)
+      });
+      await fetch(`/api/invoices/${encodeURIComponent(invoice.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: invoiceStatus, txHash: payment.boc || payment.simulationId })
+      });
+    } catch {
+      // Supabase is optional. Local dashboard history is still available.
     }
   }
 
@@ -187,8 +232,24 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
     if (executionMode === "simulation") {
       setTxState("building");
       await new Promise((resolve) => setTimeout(resolve, 650));
-      setSimulationId(makeSimulationId());
+      const simId = makeSimulationId();
+      setSimulationId(simId);
       setTxBoc("simulation-only-no-mainnet-broadcast");
+      await persistPayment({
+        id: generatePaymentId(),
+        invoiceId: invoice.id,
+        mode: "simulation",
+        status: "simulated",
+        payerAddress: walletAddress,
+        recipientAddress: destinationAddress,
+        sourceToken: assetSymbol(fromAsset),
+        targetToken: assetSymbol(targetAsset),
+        inputAmount: `${bidDisplay} ${assetSymbol(fromAsset)}`,
+        outputAmount: `${askDisplay} ${assetSymbol(targetAsset)}`,
+        quoteId: willTradedQuote.value.quoteId,
+        simulationId: simId,
+        createdAt: new Date().toISOString()
+      }, "simulated");
       setTxState("submitted");
       return;
     }
@@ -216,7 +277,23 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
           stateInit: toTonConnectPayload(message.jettonWalletStateInit)
         }))
       });
-      setTxBoc(result.boc || "submitted");
+      const boc = result.boc || "submitted";
+      setTxBoc(boc);
+      await persistPayment({
+        id: generatePaymentId(),
+        invoiceId: invoice.id,
+        mode: "real",
+        status: "submitted",
+        payerAddress: walletAddress,
+        recipientAddress: destinationAddress,
+        sourceToken: assetSymbol(fromAsset),
+        targetToken: assetSymbol(targetAsset),
+        inputAmount: `${bidDisplay} ${assetSymbol(fromAsset)}`,
+        outputAmount: `${askDisplay} ${assetSymbol(targetAsset)}`,
+        quoteId: willTradedQuote.value.quoteId,
+        boc,
+        createdAt: new Date().toISOString()
+      }, "submitted");
       setTxState("submitted");
     } catch (error) {
       console.error(error);
@@ -271,16 +348,16 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
           </div>
           <div className="ai-box">
             <label className="label">
-              Mira payment command
+              Payment command
               <div className="ai-row">
                 <input className="input" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="Pay this invoice with TON" />
-                <button className="btn btn-primary" onClick={parseWithMira} disabled={aiLoading}>{aiLoading ? "Parsing…" : "Parse intent"}</button>
+                <button className="btn btn-primary" onClick={parsePaymentIntent} disabled={aiLoading}>{aiLoading ? "Parsing…" : "Parse payment intent"}</button>
               </div>
             </label>
             {intent && (
               <div className="card card-tight">
                 <div className="invoice-top">
-                  <span className="badge badge-blue">{aiProvider === "mira" ? "Mira AI" : "Mira-compatible parser"}</span>
+                  <span className="badge badge-blue">{aiProvider === "mira-ready-endpoint" ? "External AI intent endpoint" : "AI intent parser"}</span>
                   <span className="badge">confidence {(intent.confidence * 100).toFixed(0)}%</span>
                 </div>
                 <p><b>{intent.paymentSummary}</b></p>
@@ -419,7 +496,7 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
               </div>
               <div className="timeline" style={{ marginTop: 14 }}>
                 <div className="timeline-row done"><span />Wallet connected</div>
-                <div className="timeline-row done"><span />Mira intent parsed</div>
+                <div className="timeline-row done"><span />Payment intent parsed</div>
                 <div className="timeline-row done"><span />Omniston quote received</div>
                 <div className="timeline-row done"><span />{executionMode === "simulation" ? "Payment result simulated" : "TON transaction submitted"}</div>
                 <div className="timeline-row pending"><span />Automated merchant settlement verification: next production step</div>

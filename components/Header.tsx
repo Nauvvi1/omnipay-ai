@@ -1,16 +1,16 @@
-import Link from "next/link";
+import { LoadingLink } from "@/components/LoadingLink";
 
 export function Header() {
   return (
     <header className="header shell">
-      <Link className="brand" href="/">
+      <LoadingLink className="brand" href="/" loadingLabel="Home…">
         <span className="logo">O</span>
         <span>OmniPay AI</span>
-      </Link>
+      </LoadingLink>
       <nav className="nav">
-        <Link className="btn" href="/#flow">Flow</Link>
-        <Link className="btn" href="/pay/demo">Live demo</Link>
-        <Link className="btn btn-primary" href="/create">Create invoice</Link>
+        <LoadingLink className="btn" href="/#flow">Flow</LoadingLink>
+        <LoadingLink className="btn" href="/dashboard" loadingLabel="Opening…">Dashboard</LoadingLink>
+        <LoadingLink className="btn btn-primary" href="/create" loadingLabel="Opening…">Create invoice</LoadingLink>
       </nav>
     </header>
   );

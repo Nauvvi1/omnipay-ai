@@ -1,15 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
-import { encodeInvoice, generateInvoiceId, Invoice, isValidTonAddress } from "@/lib/invoices";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { encodeInvoice, generateInvoiceId, Invoice, isValidTonAddress, TON_ADDRESS_ERROR } from "@/lib/invoices";
+import { saveLocalInvoice } from "@/lib/storage";
+import { startNavigationLoading } from "@/components/NavigationOverlay";
 
 export function CreateInvoiceForm() {
+  const router = useRouter();
   const [amount, setAmount] = useState("25");
   const [targetToken, setTargetToken] = useState("USDT");
   const [recipient, setRecipient] = useState("");
   const [description, setDescription] = useState("Dinner bill / service invoice");
-  const [touched, setTouched] = useState(false);
+  const [showRecipientError, setShowRecipientError] = useState(false);
+  const [origin, setOrigin] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [storageNote, setStorageNote] = useState("");
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   const invoice = useMemo<Invoice>(() => ({
     id: generateInvoiceId(),
@@ -23,13 +33,51 @@ export function CreateInvoiceForm() {
 
   const encoded = encodeInvoice(invoice);
   const url = `/pay/${invoice.id}?i=${encoded}`;
-  const canCreate = Number(amount) > 0 && targetToken.trim().length >= 2 && isValidTonAddress(recipient);
+  const fullUrl = `${origin}${url}`;
+  const amountIsValid = Number(amount) > 0;
+  const recipientIsValid = isValidTonAddress(recipient);
+  const canCreate = amountIsValid && targetToken.trim().length >= 2 && recipientIsValid;
+
+  async function saveInvoice() {
+    saveLocalInvoice(invoice);
+    try {
+      const response = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(invoice)
+      });
+      const json = await response.json();
+      setStorageNote(json.storage === "supabase" ? "Saved to Supabase backend." : "Saved in browser storage. Supabase env is optional.");
+    } catch {
+      setStorageNote("Saved in browser storage. Backend sync was skipped.");
+    }
+  }
+
+  async function handleOpen() {
+    setShowRecipientError(!recipientIsValid);
+    if (!canCreate) return;
+    setSaving(true);
+    await saveInvoice();
+    setSaving(false);
+    startNavigationLoading();
+    router.push(url);
+  }
+
+  async function handleCopy() {
+    setShowRecipientError(!recipientIsValid);
+    if (!canCreate) return;
+    setSaving(true);
+    await saveInvoice();
+    setSaving(false);
+    await navigator.clipboard?.writeText(fullUrl);
+    setStorageNote("Checkout link copied and invoice saved.");
+  }
 
   return (
     <div className="card glass">
       <div className="invoice-top">
         <span className="badge badge-green">Invoice builder</span>
-        <span className="badge">No backend required</span>
+        <span className="badge">Dashboard-ready</span>
       </div>
       <div className="form">
         <label className="label">
@@ -49,13 +97,14 @@ export function CreateInvoiceForm() {
           <input
             className="input"
             value={recipient}
-            onBlur={() => setTouched(true)}
-            onChange={(e) => setRecipient(e.target.value)}
+            onBlur={() => setShowRecipientError(!isValidTonAddress(recipient))}
+            onChange={(e) => {
+              setRecipient(e.target.value);
+              if (showRecipientError) setShowRecipientError(!isValidTonAddress(e.target.value));
+            }}
             placeholder="EQ... or UQ..."
           />
-          {touched && recipient && !isValidTonAddress(recipient) && (
-            <span className="error">Enter a valid user-friendly TON address starting with EQ or UQ.</span>
-          )}
+          {showRecipientError && <span className="error">{TON_ADDRESS_ERROR}</span>}
         </label>
         <label className="label">
           Description
@@ -63,15 +112,16 @@ export function CreateInvoiceForm() {
         </label>
 
         <div className="divider" />
-        <div className="copy-box code">{canCreate ? `${typeof window !== "undefined" ? window.location.origin : ""}${url}` : "Add a valid TON recipient to generate the checkout link."}</div>
+        <div className="copy-box code">{canCreate ? fullUrl : "Add a valid TON recipient to generate the checkout link."}</div>
         <div className="grid grid-2">
-          <Link className={`btn btn-primary btn-wide ${!canCreate ? "disabled" : ""}`} href={canCreate ? url : "#"} onClick={(e) => !canCreate && e.preventDefault()}>
-            Open checkout
-          </Link>
-          <button className="btn btn-wide" disabled={!canCreate} onClick={() => navigator.clipboard?.writeText(`${window.location.origin}${url}`)}>
+          <button className="btn btn-primary btn-wide" disabled={saving} onClick={handleOpen} type="button">
+            {saving ? "Saving…" : "Open checkout"}
+          </button>
+          <button className="btn btn-wide" disabled={saving} onClick={handleCopy} type="button">
             Copy link
           </button>
         </div>
+        {storageNote && <p className="success">{storageNote}</p>}
       </div>
     </div>
   );
