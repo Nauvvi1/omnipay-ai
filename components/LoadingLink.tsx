@@ -3,7 +3,6 @@
 import Link, { LinkProps } from "next/link";
 import { usePathname } from "next/navigation";
 import { AnchorHTMLAttributes, MouseEvent, ReactNode, useState } from "react";
-import { startNavigationLoading } from "@/components/NavigationOverlay";
 
 type LoadingLinkProps = LinkProps &
   Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
@@ -13,7 +12,14 @@ type LoadingLinkProps = LinkProps &
   };
 
 function getHrefString(href: LinkProps["href"]) {
-  return typeof href === "string" ? href : href.pathname || "";
+  if (typeof href === "string") return href;
+  const pathname = href.pathname || "";
+  const hash = href.hash ? `#${String(href.hash).replace(/^#/, "")}` : "";
+  return `${pathname}${hash}`;
+}
+
+function stripHash(value: string) {
+  return value.split("#")[0] || "/";
 }
 
 export function LoadingLink({ children, className, loadingLabel = "Loading…", onClick, href, ...props }: LoadingLinkProps) {
@@ -28,12 +34,16 @@ export function LoadingLink({ children, className, loadingLabel = "Loading…", 
     if (isModifiedClick || props.target === "_blank") return;
 
     const hrefString = getHrefString(href);
-    const isSamePageHash = hrefString.startsWith("#") || hrefString === `${pathname}#flow` || (pathname === "/" && hrefString === "/#flow");
+    const targetPath = stripHash(hrefString);
+    const sameRoute = targetPath === pathname || (pathname === "/" && targetPath === "");
+    const hashOnly = hrefString.startsWith("#") || (sameRoute && hrefString.includes("#"));
 
-    if (!isSamePageHash) {
-      setIsPending(true);
-      startNavigationLoading();
+    if (sameRoute && !hashOnly) {
+      event.preventDefault();
+      return;
     }
+
+    if (!hashOnly) setIsPending(true);
   }
 
   return (

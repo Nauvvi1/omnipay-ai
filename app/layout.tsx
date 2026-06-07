@@ -5,7 +5,7 @@ import { AppProviders } from "@/components/AppProviders";
 export const metadata: Metadata = {
   title: "OmniPay AI — TON invoice checkout",
   description:
-    "AI-powered Omniston checkout that lets users pay TON invoices with supported tokens.",
+    "Omniston-powered invoice checkout for TON payments.",
   openGraph: {
     title: "OmniPay AI",
     description: "Omniston-powered invoice checkout for TON payments.",

@@ -8,12 +8,17 @@ export type MinimalAsset = {
   };
 };
 
-export function assetSymbol(asset?: MinimalAsset) {
-  return asset?.meta?.symbol || asset?.meta?.displayName || "TOKEN";
-}
-
 export function normalizeSymbol(value = "") {
   return value.toUpperCase().replace("USD₮", "USDT").replace("TONCOIN", "TON").trim();
+}
+
+export function assetSymbol(asset?: MinimalAsset) {
+  const raw = asset?.meta?.symbol || asset?.meta?.displayName || "TOKEN";
+  return normalizeSymbol(raw);
+}
+
+export function displayAssetText(value = "") {
+  return value.replace(/USD₮/gi, "USDT");
 }
 
 export function findAssetBySymbol(assets: MinimalAsset[], symbol: string) {

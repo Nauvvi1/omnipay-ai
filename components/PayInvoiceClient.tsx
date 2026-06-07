@@ -350,14 +350,23 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
             <label className="label">
               Payment command
               <div className="ai-row">
-                <input className="input" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="Pay this invoice with TON" />
-                <button className="btn btn-primary" onClick={parsePaymentIntent} disabled={aiLoading}>{aiLoading ? "Parsing…" : "Parse payment intent"}</button>
+                <input
+                  className="input"
+                  value={command}
+                  onChange={(e) => {
+                    setCommand(e.target.value);
+                    setIntent(null);
+                    setTxError("");
+                  }}
+                  placeholder="Pay this invoice with TON"
+                />
+                <button className="btn btn-primary" onClick={parsePaymentIntent} disabled={aiLoading || Boolean(intent)}>{aiLoading ? "Parsing…" : intent ? "Intent ready" : "Parse payment intent"}</button>
               </div>
             </label>
             {intent && (
               <div className="card card-tight">
                 <div className="invoice-top">
-                  <span className="badge badge-blue">{aiProvider === "mira-ready-endpoint" ? "External AI intent endpoint" : "AI intent parser"}</span>
+                  <span className="badge badge-blue">{aiProvider === "mira-ready-endpoint" ? "External intent endpoint" : "Payment intent parser"}</span>
                   <span className="badge">confidence {(intent.confidence * 100).toFixed(0)}%</span>
                 </div>
                 <p><b>{intent.paymentSummary}</b></p>
@@ -434,7 +443,7 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
               disabled={safeDemoMode}
               title={safeDemoMode ? "Demo invoice routes to your wallet and defaults to simulation." : "Open a real Tonkeeper transaction preview."}
             >
-              Real mainnet preview
+              Preview real wallet transaction
             </button>
           </div>
 
@@ -455,7 +464,7 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
           ) : (
             <div className="card card-tight" style={{ marginBottom: 14, borderColor: "rgba(255, 209, 102, 0.42)", background: "rgba(255, 209, 102, 0.08)" }}>
               <div className="invoice-top">
-                <span className="badge badge-orange">Real mainnet transaction preview</span>
+                <span className="badge badge-orange">Real wallet transaction preview</span>
                 {safeDemoMode && <span className="badge">safe demo recipient</span>}
               </div>
               <p style={{ marginTop: 8 }}>

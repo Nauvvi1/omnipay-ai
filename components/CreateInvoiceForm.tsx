@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { encodeInvoice, generateInvoiceId, Invoice, isValidTonAddress, TON_ADDRESS_ERROR } from "@/lib/invoices";
 import { saveLocalInvoice } from "@/lib/storage";
-import { startNavigationLoading } from "@/components/NavigationOverlay";
 
 export function CreateInvoiceForm() {
   const router = useRouter();
@@ -59,7 +58,6 @@ export function CreateInvoiceForm() {
     setSaving(true);
     await saveInvoice();
     setSaving(false);
-    startNavigationLoading();
     router.push(url);
   }
 

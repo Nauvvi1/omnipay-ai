@@ -4,6 +4,7 @@ import { LoadingLink } from "@/components/LoadingLink";
 import { useEffect, useMemo, useState } from "react";
 import { displayAddress, encodeInvoice, Invoice, PaymentRecord } from "@/lib/invoices";
 import { getLocalInvoices, getLocalPayments } from "@/lib/storage";
+import { displayAssetText } from "@/lib/tokens";
 
 function statusClass(status?: string) {
   if (status === "submitted" || status === "paid" || status === "simulated") return "badge-green";
@@ -164,9 +165,9 @@ export function DashboardClient() {
               <tbody>
                 {payments.map((payment) => (
                   <tr key={payment.id}>
-                    <td><strong>{payment.outputAmount}</strong><br /><small className="code">{payment.id}</small></td>
+                    <td><strong>{displayAssetText(payment.outputAmount)}</strong><br /><small className="code">{payment.id}</small></td>
                     <td><span className={`badge ${payment.mode === "real" ? "badge-orange" : "badge-green"}`}>{payment.mode}</span></td>
-                    <td>{payment.inputAmount} → {payment.outputAmount}</td>
+                    <td>{displayAssetText(payment.inputAmount)} → {displayAssetText(payment.outputAmount)}</td>
                     <td className="code">{displayAddress(payment.payerAddress || "")}</td>
                     <td className="code">{displayAddress(payment.recipientAddress || "")}</td>
                     <td className="code">{payment.quoteId ? displayAddress(payment.quoteId, 5) : payment.simulationId ? displayAddress(payment.simulationId, 5) : "—"}</td>

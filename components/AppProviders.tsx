@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { TonConnectUIProvider } from "@tonconnect/ui-react";
 import { Omniston, OmnistonProvider, WebSocketTransport } from "@ston-fi/omniston-sdk-react";
 import { Buffer } from "buffer";
-import { NavigationOverlay } from "@/components/NavigationOverlay";
 
 function cleanUrl(value?: string) {
   return value?.replace(/\/$/, "");
@@ -40,10 +39,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   return (
     <TonConnectUIProvider manifestUrl={manifestUrl}>
-      <OmnistonProvider omniston={omniston}>
-        <NavigationOverlay />
-        {children}
-      </OmnistonProvider>
+      <OmnistonProvider omniston={omniston}>{children}</OmnistonProvider>
     </TonConnectUIProvider>
   );
 }

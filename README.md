@@ -15,7 +15,7 @@ The core product depends on STON.fi Omniston v1beta8:
 - live STON.fi asset list
 - real Omniston quote/RFQ
 - visible route and expected input/output
-- `tonBuildSwap` transaction preparation for real mainnet preview
+- `tonBuildSwap` transaction preparation for real wallet transaction preview
 - TON Connect wallet connection and transaction request
 
 ## Product pages
@@ -32,7 +32,7 @@ The core product depends on STON.fi Omniston v1beta8:
 The checkout has two modes:
 
 1. **Safe simulation** — uses the real invoice fields, connected wallet, payment intent and live Omniston quote, but does **not** build or broadcast a TON transaction.
-2. **Real mainnet preview** — builds the actual Omniston transaction and opens Tonkeeper through TON Connect. Confirming in Tonkeeper spends real TON.
+2. **Real wallet transaction preview** — builds the actual Omniston transaction and opens Tonkeeper through TON Connect. Confirming in Tonkeeper spends real TON.
 
 For a judge-safe video, use **Safe simulation** or open the real Tonkeeper preview and cancel before signing.
 
@@ -87,7 +87,7 @@ create table if not exists payments (
 
 ## Intent parser / AI layer
 
-The current STON.fi-track submission does not depend on any external AI service being available. The public UI calls this an **AI intent parser**:
+The current STON.fi-track submission does not depend on any external AI service being available. The public UI calls this an **payment intent parser**:
 
 ```txt
 "Pay this invoice with TON" → sourceToken: TON, targetToken: USDT, intent: pay_invoice

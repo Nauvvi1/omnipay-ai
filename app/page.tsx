@@ -15,7 +15,7 @@ export default function HomePage() {
               Omniston returns a live quote and route, and TON Connect opens a safe simulation or real wallet preview.
             </p>
             <div className="hero-actions">
-              <LoadingLink className="btn btn-primary btn-large" href="/create" loadingLabel="Opening builder…">Create live invoice</LoadingLink>
+              <LoadingLink className="btn btn-primary btn-large" href="/create" loadingLabel="Opening…">Create invoice</LoadingLink>
               <LoadingLink className="btn btn-large" href="/dashboard" loadingLabel="Opening dashboard…">Open merchant dashboard</LoadingLink>
             </div>
           </div>
@@ -36,7 +36,7 @@ export default function HomePage() {
               <div className="route-arrow">→</div>
               <div className="route-node"><b>USDT</b><br /><small>Merchant</small></div>
             </div>
-            <LoadingLink className="btn btn-green btn-wide" href="/create" loadingLabel="Opening builder…">Create checkout</LoadingLink>
+            <LoadingLink className="btn btn-green btn-wide" href="/create" loadingLabel="Opening…">Create checkout</LoadingLink>
           </div>
         </section>
 

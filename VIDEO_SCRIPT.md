@@ -21,7 +21,7 @@ OmniPay AI turns this into a checkout: the merchant creates a USDT invoice, and 
 
 ## 55–75s — Real integration proof
 
-Switch to real mainnet preview. The app builds the Omniston transaction and opens Tonkeeper through TON Connect. Stop before signing to avoid spending real funds.
+Switch to real wallet transaction preview. The app builds the Omniston transaction and opens Tonkeeper through TON Connect. Stop before signing to avoid spending real funds.
 
 ## 75–90s — Close
 
