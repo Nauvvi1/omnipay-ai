@@ -1,159 +1,147 @@
 # OmniPay AI
 
-**Omniston-powered invoice checkout for TON.**
+**OmniPay AI is an Omniston-powered checkout for TON invoices.**
 
-OmniPay AI lets a merchant create a USDT invoice and lets a payer cover it from TON or another Omniston-supported asset when a route is available. The project is built for the **STON.fi Vibe Coding Hackathon Cohort #2** and focuses on a clear end-to-end product flow:
+A merchant can create a USDT invoice, while the payer can use TON through STON.fi Omniston routing. The app shows a live quote, payment route, TON Connect wallet flow, safe simulation mode, and a merchant dashboard with invoice/payment history.
 
-```txt
-Create invoice → connect wallet → parse payment intent → Omniston quote/route → safe simulation or real wallet preview → merchant dashboard
-```
+This project was built for the **STON.fi Vibe Coding Hackathon Cohort 2**.
 
-## Why it fits the STON.fi track
+---
 
-The core product depends on STON.fi Omniston v1beta8:
+## Live Demo
 
-- live STON.fi asset list
-- real Omniston quote/RFQ
-- visible route and expected input/output
-- `tonBuildSwap` transaction preparation for real wallet transaction preview
-- TON Connect wallet connection and transaction request
+**App:** https://meshshift.com  
+**Video demo:** https://www.youtube.com/watch?v=kfBisUnqP9Q
 
-## Product pages
+---
 
-```txt
-/              Landing and product pitch
-/create        Merchant invoice builder
-/pay/[id]      Checkout page
-/dashboard     Merchant invoice and payment history
-```
+## Why I built this
 
-## Demo safety
+TON users often hold TON or different jettons, while merchants usually want to receive a specific token like USDT.
 
-The checkout has two modes:
+Today, this creates friction:
 
-1. **Safe simulation** — uses the real invoice fields, connected wallet, payment intent and live Omniston quote, but does **not** build or broadcast a TON transaction.
-2. **Real wallet transaction preview** — builds the actual Omniston transaction and opens Tonkeeper through TON Connect. Confirming in Tonkeeper spends real TON.
+1. The user has to manually open a DEX.
+2. Swap the token.
+3. Return to the merchant.
+4. Complete the payment separately.
 
-For a judge-safe video, use **Safe simulation** or open the real Tonkeeper preview and cancel before signing.
+**OmniPay AI turns this into one checkout flow.**
 
-## Storage
+The idea is simple:
 
-The app works immediately without a backend:
+> A merchant requests USDT.  
+> The payer has TON.  
+> Omniston finds the route.  
+> TON Connect opens the wallet flow.  
+> The merchant can track the invoice.
 
-- invoices are encoded in the checkout URL
-- invoices and payments are also saved to browser `localStorage`
-- the dashboard merges browser records with optional backend records
+I really enjoyed building this because it feels like something that can become more than a weekend hackathon project. My goal is to continue developing it into a real TON payment product for merchants, mini apps, creators, and services that want to accept crypto payments without forcing users to manually swap tokens first.
 
-For a stronger deployment, connect Supabase by setting:
+---
 
-```env
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-```
+## What it does
 
-### Supabase SQL schema
+OmniPay AI lets a merchant create a payment invoice and lets a payer go through a smooth checkout flow.
 
-Create these tables in Supabase if you want persistent backend storage:
+Current flow:
 
-```sql
-create table if not exists invoices (
-  id text primary key,
-  amount text not null,
-  target_token text not null,
-  recipient text not null,
-  description text,
-  status text default 'unpaid',
-  tx_hash text,
-  created_at timestamptz default now()
-);
+1. Merchant creates a USDT invoice.
+2. Payer opens the checkout link.
+3. Payer connects a TON wallet with TON Connect.
+4. The app parses the payment command into a payment intent.
+5. STON.fi Omniston returns a live TON → USDT quote.
+6. The payer can either:
+   - run a safe simulation, or
+   - open a real mainnet Tonkeeper transaction preview.
+7. The merchant can view invoices and payment history in the dashboard.
 
-create table if not exists payments (
-  id text primary key,
-  invoice_id text references invoices(id) on delete cascade,
-  mode text not null,
-  status text not null,
-  payer_address text,
-  recipient_address text,
-  source_token text not null,
-  target_token text not null,
-  input_amount text not null,
-  output_amount text not null,
-  quote_id text,
-  boc text,
-  simulation_id text,
-  created_at timestamptz default now()
-);
-```
+---
 
-## Intent parser / AI layer
+## Key features
 
-The current STON.fi-track submission does not depend on any external AI service being available. The public UI calls this an **payment intent parser**:
+- **Invoice creation**
+  - Amount
+  - Target token
+  - Recipient wallet address
+  - Description
 
-```txt
-"Pay this invoice with TON" → sourceToken: TON, targetToken: USDT, intent: pay_invoice
-```
+- **Omniston-powered checkout**
+  - Live quote
+  - Route preview
+  - Expected input/output
+  - Quote ID
 
-The app includes an optional external intent endpoint hook:
+- **TON Connect wallet flow**
+  - Wallet connection
+  - Real transaction preview mode
+  - Safe demo mode for judging and testing
 
-```env
-INTENT_FLOW_ENDPOINT=
-INTENT_API_KEY=
-```
+- **Merchant dashboard**
+  - Created invoices
+  - Payment attempts
+  - Simulated/real payment flow history
 
-If these variables are empty, the app uses a deterministic local parser so the demo remains reliable.
+- **Safe simulation mode**
+  - Shows the full checkout experience
+  - Does not send a real transaction
+  - Useful for demos and judging
 
-## Local setup
+---
+
+## STON.fi integration
+
+The main integration is **STON.fi Omniston SDK v1beta8**.
+
+Omniston is used for:
+
+- fetching a live quote;
+- showing the TON → USDT route;
+- calculating expected input/output;
+- preparing the real transaction preview flow.
+
+This is not just a static UI. The checkout uses real Omniston routing data.
+
+---
+
+## Why this matters
+
+This is not meant to be “another swap interface”.
+
+The goal is to use STON.fi infrastructure as invisible payment routing:
+
+> Instead of asking users to understand swaps, pools, routes, and slippage, the merchant simply creates an invoice and the payer goes through a checkout.
+
+That is the product direction I want to keep building after the hackathon.
+
+Future versions could support:
+
+- more Omniston-supported tokens;
+- merchant accounts;
+- Telegram Mini App checkout;
+- automatic on-chain settlement verification;
+- payment links for creators and services;
+- subscriptions and recurring invoices.
+
+---
+
+## Tech stack
+
+- **Next.js**
+- **React**
+- **TypeScript**
+- **TON Connect**
+- **STON.fi Omniston SDK v1beta8**
+- **Nginx**
+- **Ubuntu server deployment**
+- **systemd production process**
+
+---
+
+## How to run locally
+
+Clone the repository:
 
 ```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-Open:
-
-```txt
-http://localhost:3000
-```
-
-## TON Connect local mobile testing
-
-Mobile Tonkeeper cannot connect to `localhost`. Use ngrok:
-
-```bash
-npm run dev
-ngrok http 3000
-```
-
-Then set in `.env.local`:
-
-```env
-NEXT_PUBLIC_APP_URL=https://your-ngrok-domain.ngrok-free.app
-```
-
-Restart Next.js and open the ngrok URL. Confirm the manifest:
-
-```txt
-https://your-ngrok-domain.ngrok-free.app/tonconnect-manifest.json
-```
-
-It must not contain `localhost`.
-
-## Submission checklist
-
-- Functional working app
-- STON.fi Omniston v1beta8 integration
-- TON Connect wallet connection
-- Clear invoice checkout use case
-- Merchant dashboard and payment history
-- Safe simulation mode for judges
-- Real mainnet transaction preview for technical proof
-- GitHub repository
-- Live production URL
-- Video presentation
-
-## Current limitations
-
-- Automatic on-chain merchant settlement verification is the next production step.
-- Supabase is optional; without env keys, storage falls back to browser localStorage and URL payloads.
-- The most stable tested route is TON → USDT.
+git clone https://github.com/Nauvvi1/omnipay-ai.git
+cd omnipay-ai
