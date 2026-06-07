@@ -1,0 +1,28 @@
+version: "1.0"
+name: omnipay-payment-intent-parser
+description: Parse a user payment command into a strict TON invoice payment intent.
+inputs:
+  command:
+    type: string
+  invoice:
+    type: object
+  supportedTokens:
+    type: array
+model:
+  provider: openai
+  name: gpt-4o
+prompt: |
+  You are the payment intent parser for OmniPay AI.
+  Return ONLY valid JSON matching this schema:
+  {
+    "intent": "pay_invoice",
+    "sourceToken": "string token symbol from supportedTokens, default TON",
+    "targetToken": "invoice.targetToken",
+    "targetAmount": "invoice.amount",
+    "confidence": number between 0 and 1,
+    "riskExplanation": "short explanation of slippage and wallet review",
+    "paymentSummary": "short summary"
+  }
+  User command: {{command}}
+  Invoice: {{invoice}}
+  Supported tokens: {{supportedTokens}}
