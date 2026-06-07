@@ -4,17 +4,58 @@ import { useEffect, useMemo, useState } from "react";
 import { TonConnectButton, useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { StonApiClient, AssetTag, type AssetInfoV2 } from "@ston-fi/api";
 import {
-  Blockchain,
-  GaslessSettlement,
   SettlementMethod,
   useOmniston,
   useRfq,
-  type QuoteResponseEvent_QuoteUpdated
+  type AssetId,
+  type ChainAddress,
+  type Quote
 } from "@ston-fi/omniston-sdk-react";
 import { DEMO_INVOICE, decodeInvoice, displayAddress, Invoice, isValidTonAddress } from "@/lib/invoices";
 import { fromBaseUnits, toBaseUnits } from "@/lib/amounts";
 import { assetSymbol, findAssetBySymbol, sortPreferredAssets } from "@/lib/tokens";
 import type { PaymentIntent } from "@/lib/mira";
+
+
+type QuoteUpdatedEvent = {
+  $case: "quoteUpdated";
+  rfqId?: string;
+  value: Quote;
+};
+
+type ExecutionMode = "simulation" | "real";
+
+function tonAddress(address: string): ChainAddress {
+  return { chain: { $case: "ton", value: address } };
+}
+
+function tonAssetId(asset?: AssetInfoV2): AssetId | undefined {
+  if (!asset) return undefined;
+  if (asset.kind === "Ton") {
+    return { chain: { $case: "ton", value: { kind: { $case: "native", value: {} } } } };
+  }
+  if (asset.kind === "Jetton" || asset.kind === "Wton") {
+    return { chain: { $case: "ton", value: { kind: { $case: "jetton", value: asset.contractAddress } } } };
+  }
+  return undefined;
+}
+
+function toTonConnectPayload(payload?: string) {
+  if (!payload) return undefined;
+  // Omniston returns TON payload/stateInit as hex BoC, while TON Connect expects base64 BoC.
+  if (/^[0-9a-fA-F]+$/.test(payload)) {
+    return Buffer.from(payload, "hex").toString("base64");
+  }
+  return payload;
+}
+
+function makeSimulationId() {
+  return `SIM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function tonviewerAddress(address?: string) {
+  return address ? `https://tonviewer.com/${address}` : undefined;
+}
 
 export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedInvoice?: string }) {
   const invoice = useMemo<Invoice>(() => decodeInvoice(encodedInvoice) || { ...DEMO_INVOICE, id }, [encodedInvoice, id]);
@@ -35,9 +76,10 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
   const [aiLoading, setAiLoading] = useState(false);
   const [aiProvider, setAiProvider] = useState("local-fallback");
 
-  const [txState, setTxState] = useState<"idle" | "building" | "wallet" | "submitted" | "failed">("idle");
+  const [txState, setTxState] = useState<"idle" | "building" | "wallet" | "submitted" | "failed" | "cancelled">("idle");
   const [txBoc, setTxBoc] = useState<string>("");
   const [txError, setTxError] = useState<string>("");
+  const [simulationId, setSimulationId] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
@@ -74,27 +116,42 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
     return toBaseUnits(invoice.amount, decimals);
   }, [invoice.amount, targetAsset?.meta?.decimals]);
 
-  const quoteRequestEnabled = Boolean(fromAsset?.contractAddress && targetAsset?.contractAddress && askUnits !== "0" && txState !== "submitted");
+  const inputAsset = useMemo(() => tonAssetId(fromAsset), [fromAsset]);
+  const outputAsset = useMemo(() => tonAssetId(targetAsset), [targetAsset]);
+  const quoteRequestEnabled = Boolean(inputAsset && outputAsset && askUnits !== "0" && txState !== "submitted");
 
   const { data: quoteEvent, isLoading: quoteLoading, error: quoteError } = useRfq({
-    settlementMethods: [SettlementMethod.SETTLEMENT_METHOD_SWAP],
-    bidAssetAddress: fromAsset?.contractAddress
-      ? { blockchain: Blockchain.TON, address: fromAsset.contractAddress }
-      : undefined,
-    askAssetAddress: targetAsset?.contractAddress
-      ? { blockchain: Blockchain.TON, address: targetAsset.contractAddress }
-      : undefined,
-    amount: { askUnits },
-    settlementParams: {
-      gaslessSettlement: GaslessSettlement.GASLESS_SETTLEMENT_POSSIBLE,
-      maxPriceSlippageBps: 100
-    }
+    inputAsset: inputAsset as AssetId,
+    outputAsset: outputAsset as AssetId,
+    amount: { $case: "outputUnits", value: askUnits },
+    settlementParams: [
+      {
+        params: {
+          $case: "swap",
+          value: {
+            maxPriceSlippagePips: 10_000,
+            maxRoutes: 4,
+            flexibleIntegratorFee: true
+          }
+        }
+      }
+    ]
   }, { enabled: quoteRequestEnabled });
 
-  const quote = quoteEvent && quoteEvent.type === "quoteUpdated" ? quoteEvent.quote : null;
+  const quoteUpdated = quoteEvent?.$case === "quoteUpdated" ? quoteEvent as QuoteUpdatedEvent : undefined;
+  const quote = quoteUpdated?.value || null;
   const recipientIsReal = isValidTonAddress(invoice.recipient);
   const destinationAddress = recipientIsReal ? invoice.recipient : walletAddress;
   const safeDemoMode = !recipientIsReal;
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>(safeDemoMode ? "simulation" : "real");
+
+  useEffect(() => {
+    setExecutionMode(safeDemoMode ? "simulation" : "real");
+  }, [safeDemoMode]);
+
+  const walletLink = tonviewerAddress(walletAddress);
+  const recipientLink = tonviewerAddress(destinationAddress);
+  const transactionDisabled = !walletAddress || !quoteUpdated || txState === "building" || txState === "wallet";
 
   async function parseWithMira() {
     setAiLoading(true);
@@ -116,60 +173,76 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
     }
   }
 
-  async function buildAndSend(willTradedQuote: QuoteResponseEvent_QuoteUpdated | undefined) {
+  async function buildAndSend(willTradedQuote: QuoteUpdatedEvent | undefined) {
     if (!willTradedQuote || !walletAddress) {
       setTxError("Connect wallet and wait for a valid Omniston quote first.");
       return;
     }
     if (!destinationAddress) {
-      setTxError("A real recipient address is required for payment mode.");
+      setTxError("A connected wallet or real recipient address is required.");
       return;
     }
 
     setTxError("");
+    if (executionMode === "simulation") {
+      setTxState("building");
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      setSimulationId(makeSimulationId());
+      setTxBoc("simulation-only-no-mainnet-broadcast");
+      setTxState("submitted");
+      return;
+    }
+
     setTxState("building");
     try {
-      const tx = await omniston.buildTransfer({
-        quote: willTradedQuote.quote,
-        sourceAddress: { blockchain: Blockchain.TON, address: walletAddress },
-        destinationAddress: { blockchain: Blockchain.TON, address: destinationAddress },
-        gasExcessAddress: { blockchain: Blockchain.TON, address: walletAddress },
-        refundAddress: { blockchain: Blockchain.TON, address: walletAddress },
+      const tx = await omniston.tonBuildSwap({
+        quoteId: willTradedQuote.value.quoteId,
+        transferSrcAddress: tonAddress(walletAddress),
+        traderDstAddress: tonAddress(destinationAddress),
+        gasExcessAddress: tonAddress(walletAddress),
+        refundSrcAddress: tonAddress(walletAddress),
         useRecommendedSlippage: true
       });
-      const messages = tx.ton?.messages || [];
+      const messages = tx.messages || [];
       if (!messages.length) throw new Error("Omniston returned no TON messages for this quote.");
 
       setTxState("wallet");
       const result = await tonConnect.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 600,
-        messages: messages.map((message: any) => ({
+        messages: messages.map((message) => ({
           address: message.targetAddress,
           amount: message.sendAmount,
-          payload: message.payload
+          payload: toTonConnectPayload(message.payload),
+          stateInit: toTonConnectPayload(message.jettonWalletStateInit)
         }))
       });
       setTxBoc(result.boc || "submitted");
       setTxState("submitted");
     } catch (error) {
       console.error(error);
-      setTxError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      const cancelled = /reject|declin|cancel|abort|user/i.test(message);
+      if (cancelled) {
+        setTxError("Wallet preview was cancelled. No funds were spent.");
+        setTxState("cancelled");
+        return;
+      }
+      setTxError(message);
       setTxState("failed");
     }
   }
 
-  const quoteUpdated = quoteEvent?.type === "quoteUpdated" ? quoteEvent as QuoteResponseEvent_QuoteUpdated : undefined;
   const fromDecimals = fromAsset?.meta?.decimals ?? 9;
   const toDecimals = targetAsset?.meta?.decimals ?? 6;
-  const bidDisplay = quote ? fromBaseUnits(quote.bidUnits, fromDecimals, 6) : "—";
-  const askDisplay = quote ? fromBaseUnits(quote.askUnits, toDecimals, 6) : invoice.amount;
+  const bidDisplay = quote ? fromBaseUnits(quote.inputUnits, fromDecimals, 6) : "—";
+  const askDisplay = quote ? fromBaseUnits(quote.outputUnits, toDecimals, 6) : invoice.amount;
 
   return (
     <main className="shell invoice-layout">
       <aside className="card glass">
         <div className="invoice-top">
           <span className="badge badge-blue">Invoice #{invoice.id}</span>
-          <span className={`badge ${txState === "submitted" ? "badge-green" : "badge-orange"}`}>{txState === "submitted" ? "submitted" : "unpaid"}</span>
+          <span className={`badge ${txState === "submitted" ? "badge-green" : "badge-orange"}`}>{txState === "submitted" ? (executionMode === "simulation" ? "simulated" : "submitted") : "unpaid"}</span>
         </div>
         <h3>{invoice.description || "TON invoice"}</h3>
         <div className="amount">{invoice.amount} {invoice.targetToken}</div>
@@ -185,7 +258,7 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
         {safeDemoMode && (
           <>
             <div className="divider" />
-            <span className="badge badge-orange">Demo invoice routes output back to the connected wallet. Create a real invoice to set merchant recipient.</span>
+            <span className="badge badge-orange">Safe demo: output routes back to the connected wallet. Create a real invoice to set a merchant recipient.</span>
           </>
         )}
       </aside>
@@ -267,17 +340,94 @@ export function PayInvoiceClient({ id, encodedInvoice }: { id: string; encodedIn
           </div>
 
           {quoteError && <p className="error">Omniston quote error: {String(quoteError)}</p>}
-          {quoteEvent?.type === "noQuote" && <p className="error">No Omniston quote for this pair right now. Try TON → USDT.</p>}
+          {quoteEvent?.$case === "noQuote" && <p className="error">No Omniston quote for this pair right now. Try TON → USDT.</p>}
           <div className="divider" />
-          <button className="btn btn-green btn-large btn-wide" onClick={() => buildAndSend(quoteUpdated)} disabled={!walletAddress || !quoteUpdated || txState === "building" || txState === "wallet"}>
-            {txState === "building" ? "Building Omniston transfer…" : txState === "wallet" ? "Confirm in wallet…" : "Review & Pay with TON Connect"}
+          <div className="mode-switch">
+            <button
+              className={`mode-pill ${executionMode === "simulation" ? "mode-pill-active" : ""}`}
+              onClick={() => { setExecutionMode("simulation"); setTxState("idle"); setTxBoc(""); setSimulationId(""); setTxError(""); }}
+              type="button"
+            >
+              Safe simulation
+            </button>
+            <button
+              className={`mode-pill ${executionMode === "real" ? "mode-pill-active" : ""}`}
+              onClick={() => { setExecutionMode("real"); setTxState("idle"); setTxBoc(""); setSimulationId(""); setTxError(""); }}
+              type="button"
+              disabled={safeDemoMode}
+              title={safeDemoMode ? "Demo invoice routes to your wallet and defaults to simulation." : "Open a real Tonkeeper transaction preview."}
+            >
+              Real mainnet preview
+            </button>
+          </div>
+
+          {executionMode === "simulation" ? (
+            <div className="card card-tight simulation-card" style={{ marginBottom: 14 }}>
+              <div className="invoice-top">
+                <span className="badge badge-green">Safe demo mode</span>
+                <span className="badge">no wallet broadcast</span>
+              </div>
+              <p style={{ marginTop: 8 }}>
+                This mode keeps the real invoice fields and Omniston quote, but does not build or send a TON transaction.
+                It simulates the final payment state for a judge-safe product walkthrough.
+              </p>
+              <p style={{ marginTop: 8 }}>
+                Use it for the live demo video. Switch to real preview on a real invoice if you want to open Tonkeeper.
+              </p>
+            </div>
+          ) : (
+            <div className="card card-tight" style={{ marginBottom: 14, borderColor: "rgba(255, 209, 102, 0.42)", background: "rgba(255, 209, 102, 0.08)" }}>
+              <div className="invoice-top">
+                <span className="badge badge-orange">Real mainnet transaction preview</span>
+                {safeDemoMode && <span className="badge">safe demo recipient</span>}
+              </div>
+              <p style={{ marginTop: 8 }}>
+                This button opens a real Tonkeeper transaction. You can safely cancel in the wallet.
+                Confirm only if you want to execute a real mainnet swap and spend TON.
+              </p>
+              <p style={{ marginTop: 8 }}>
+                Tonkeeper may show extra TON for gas, forward fees and contract execution. Unused excess may be returned by the Omniston flow.
+              </p>
+            </div>
+          )}
+
+          <button className="btn btn-green btn-large btn-wide" onClick={() => buildAndSend(quoteUpdated)} disabled={transactionDisabled}>
+            {txState === "building"
+              ? executionMode === "simulation" ? "Simulating settlement…" : "Building Omniston transfer…"
+              : txState === "wallet"
+                ? "Waiting for wallet confirmation…"
+                : executionMode === "simulation" ? "Run safe payment simulation" : "Preview real wallet transaction"}
           </button>
-          {txError && <p className="error">{txError}</p>}
+          {txError && <p className={txState === "cancelled" ? "success" : "error"}>{txError}</p>}
           {txState === "submitted" && (
-            <div className="card card-tight" style={{ marginTop: 14 }}>
-              <span className="badge badge-green">Transaction submitted</span>
-              <p>The wallet accepted the transaction. Merchant settlement can be tracked with Omniston trade status in the next production step.</p>
-              <div className="copy-box code">{displayAddress(txBoc, 18)}</div>
+            <div className="payment-result card card-tight" style={{ marginTop: 14 }}>
+              <div className="invoice-top">
+                <span className="badge badge-green">{executionMode === "simulation" ? "Simulation complete" : "Transaction submitted"}</span>
+                <span className="badge">{executionMode === "simulation" ? "demo-safe" : "mainnet"}</span>
+              </div>
+              <h3 style={{ marginTop: 12 }}>{executionMode === "simulation" ? "Payment flow completed safely" : "Payment submitted to TON"}</h3>
+              <p>
+                {executionMode === "simulation"
+                  ? "No funds were spent. The app simulated the final checkout result using the live invoice, wallet, intent and Omniston quote."
+                  : "The wallet accepted the transaction. This is a real mainnet submission if you confirmed it in Tonkeeper."}
+              </p>
+              <div className="quote-grid" style={{ marginTop: 14 }}>
+                <div className="quote-item"><small>Payer sends</small><strong>{bidDisplay} {assetSymbol(fromAsset)}</strong></div>
+                <div className="quote-item"><small>Recipient gets</small><strong>{askDisplay} {assetSymbol(targetAsset)}</strong></div>
+                <div className="quote-item"><small>Route</small><strong>{assetSymbol(fromAsset)} → Omniston → {assetSymbol(targetAsset)}</strong></div>
+                <div className="quote-item"><small>{executionMode === "simulation" ? "Simulation ID" : "TON Connect BOC"}</small><strong className="code">{executionMode === "simulation" ? simulationId : displayAddress(txBoc, 8)}</strong></div>
+              </div>
+              <div className="timeline" style={{ marginTop: 14 }}>
+                <div className="timeline-row done"><span />Wallet connected</div>
+                <div className="timeline-row done"><span />Mira intent parsed</div>
+                <div className="timeline-row done"><span />Omniston quote received</div>
+                <div className="timeline-row done"><span />{executionMode === "simulation" ? "Payment result simulated" : "TON transaction submitted"}</div>
+                <div className="timeline-row pending"><span />Automated merchant settlement verification: next production step</div>
+              </div>
+              <div className="result-actions">
+                {walletLink && <a className="btn" href={walletLink} target="_blank" rel="noreferrer">Open payer in Tonviewer</a>}
+                {recipientLink && <a className="btn" href={recipientLink} target="_blank" rel="noreferrer">Open recipient in Tonviewer</a>}
+              </div>
             </div>
           )}
         </div>

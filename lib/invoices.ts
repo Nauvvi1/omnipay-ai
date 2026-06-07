@@ -14,10 +14,10 @@ export type Invoice = {
 
 export const DEMO_INVOICE: Invoice = {
   id: "demo",
-  amount: "5",
+  amount: "0.01",
   targetToken: "USDT",
   recipient: "demo-safe-recipient",
-  description: "Demo merchant invoice — dinner bill for Cohort #2 judges",
+  description: "Safe demo invoice — micro checkout for Cohort #2 judges",
   createdAt: new Date("2026-06-04T15:00:00Z").toISOString(),
   status: "unpaid"
 };
